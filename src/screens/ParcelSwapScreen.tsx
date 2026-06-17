@@ -1,29 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera'; 
 import { SwapRequest } from '../types';
+import { Entypo } from '@expo/vector-icons';
 
 const OTHER_RIDERS: string[] = ['Karim Ullah', 'Sohail Rana', 'Imtiaz Ahmed', 'Kamrul Hasan'];
 
 export default function ParcelSwapScreen(): React.JSX.Element {
   const [scannedParcels, setScannedParcels] = useState<string[]>([]);
   const [selectedRider, setSelectedRider] = useState<string>('');
-  const [scanning, setScanning] = useState<boolean>(false);
+  
+  // Camera States & Hooks
+  const [permission, requestPermission] = useCameraPermissions();
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  
+  // Throttle helper to avoid multiple overlapping scans of the same code
+  const lastScannedTimestampRef = useRef<number>(0);
+
   const [activeRequests, setActiveRequests] = useState<SwapRequest[]>([
     { targetRider: 'Karim Ullah', count: 5, status: 'Pending Approval' }
   ]);
 
-  const simulateScan = (): void => {
-    setScanning(true);
-    setTimeout(() => {
-      const generatedCode = `PRCL-${Math.floor(1000 + Math.random() * 9000)}`;
-      
-      if (scannedParcels.includes(generatedCode)) {
-        Alert.alert("Duplicate Scan", "This parcel has already been scanned.");
+  // Handle barcode scanned event
+  const handleBarcodeScanned = (result: BarcodeScanningResult): void => {
+    const timestamp = Date.now();
+    
+    // 1.5-second cooldown to block rapid continuous triggers
+    if (timestamp - lastScannedTimestampRef.current < 1500) {
+      return;
+    }
+    lastScannedTimestampRef.current = timestamp;
+
+    const data = result.data;
+    if (data) {
+      if (scannedParcels.includes(data)) {
+        Alert.alert("Duplicate Code", "This parcel has already been scanned.");
       } else {
-        setScannedParcels(prev => [...prev, generatedCode]);
+        setScannedParcels(prev => [...prev, data]);
+        // Automatically close the camera scanner immediately upon successful capture
+        setIsCameraActive(false); 
       }
-      setScanning(false);
-    }, 1200);
+    }
   };
 
   const handleSwapRequestSubmit = (): void => {
@@ -47,33 +64,75 @@ export default function ParcelSwapScreen(): React.JSX.Element {
     
     setScannedParcels([]);
     setSelectedRider('');
+    setIsCameraActive(false); 
+  };
+
+  const renderCameraPlaceholder = () => {
+    if (!permission) {
+      return (
+        <View className="items-center justify-center p-6">
+          <ActivityIndicator size="small" color="#4F46E5" />
+          <Text className="text-slate-400 text-xs mt-2">Loading Permissions...</Text>
+        </View>
+      );
+    }
+
+    if (!permission.granted) {
+      return (
+        <View className="items-center px-6 py-4">
+          <Text className="text-white font-bold text-sm mb-2 text-center">Camera Permission Required</Text>
+          <Text className="text-slate-400 text-xs text-center mb-4">We need camera access to scan QR & Barcodes.</Text>
+          <TouchableOpacity onPress={requestPermission} className="bg-indigo-600 px-5 py-2.5 rounded-xl">
+            <Text className="text-white font-bold text-xs">Grant Permission</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View className="items-center px-6">
+        <View className="w-16 h-16 border-2 border-indigo-400 border-dashed rounded-xl mb-3 flex justify-center items-center">
+          <Text className="text-indigo-400 font-bold text-xl">QR</Text>
+        </View>
+        <Text className="text-white font-bold text-sm mb-1 text-center">Ready to Scan</Text>
+        <Text className="text-slate-400 text-[11px] text-center mb-4">Access camera and scan your parcel barcodes</Text>
+        
+        <TouchableOpacity 
+          onPress={() => setIsCameraActive(true)} 
+          className="bg-indigo-600 px-6 py-2.5 rounded-xl">
+          <Text className="text-white font-bold text-xs">Start Camera Scanner</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
     <ScrollView className="flex-1 bg-slate-50 p-4" showsVerticalScrollIndicator={false}>
       <Text className="text-2xl font-bold text-slate-800 mb-4 mt-8">Parcel Swap (Handover)</Text>
 
-      {/* Simulator QR Scanner HUD View */}
+      {/* Camera / HUD Container */}
       <View className="bg-slate-900 rounded-3xl overflow-hidden aspect-[4/3] justify-center items-center relative mb-5 border-4 border-slate-200 shadow-md">
-        {scanning ? (
-          <View className="items-center">
-            <ActivityIndicator size="large" color="#4F46E5" />
-            <Text className="text-slate-300 font-semibold mt-2 text-sm">Processing Barcode...</Text>
-          </View>
-        ) : (
-          <View className="items-center px-6">
-            <View className="w-16 h-16 border-2 border-indigo-400 border-dashed rounded-xl mb-3 flex justify-center items-center">
-              <Text className="text-indigo-400 font-bold text-xl">QR</Text>
-            </View>
-            <Text className="text-white font-bold text-sm mb-1 text-center">Simulate Camera Scanner</Text>
-            <Text className="text-slate-400 text-[11px] text-center mb-4">Focus QR / Barcode inside target window</Text>
-            
-            <TouchableOpacity onPress={simulateScan} className="bg-indigo-600 px-6 py-2.5 rounded-xl">
-              <Text className="text-white font-bold text-xs">Press to Scan</Text>
+        
+        {isCameraActive && permission?.granted ? (
+          <View className="w-full h-full relative">
+            <CameraView
+              style={{ flex: 1 }}
+              barcodeScannerSettings={{
+                barcodeTypes: ['qr', 'ean13', 'code128'],
+              }}
+              onBarcodeScanned={handleBarcodeScanned}
+            />
+            <TouchableOpacity 
+              onPress={() => setIsCameraActive(false)}
+              className="absolute top-6 right-6 bg-gray-600/80 px-3 py-2 rounded-full">
+              <Entypo name="cross" size={24} color="white" />
             </TouchableOpacity>
           </View>
+        ) : (
+          renderCameraPlaceholder()
         )}
 
+        {/* Framing Guides HUD Layer */}
         <View className="absolute top-6 left-6 w-6 h-6 border-t-4 border-l-4 border-indigo-400" />
         <View className="absolute top-6 right-6 w-6 h-6 border-t-4 border-r-4 border-indigo-400" />
         <View className="absolute bottom-6 left-6 w-6 h-6 border-b-4 border-l-4 border-indigo-400" />
@@ -120,7 +179,7 @@ export default function ParcelSwapScreen(): React.JSX.Element {
         <Text className="text-white font-extrabold text-sm">Send Swap Request</Text>
       </TouchableOpacity>
 
-      {/* Confirmation Details */}
+      {/* Active Swap Requests History */}
       <View className="mb-8">
         <Text className="text-lg font-bold text-slate-800 mb-3">Active Swap Requests</Text>
         {activeRequests.map((req, index) => (
