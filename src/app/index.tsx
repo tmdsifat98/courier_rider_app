@@ -1,98 +1,109 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { IconBox, IconSwap, IconWallet } from "@/components/ui/SVGUtils";
+import FinancialStatement from "@/screens/FinancialStatement";
+import ParcelListScreen from "@/screens/ParcelListScreen";
+import ParcelSwapScreen from "@/screens/ParcelSwapScreen";
+import { SyncHelper } from "@/utils/syncHelper";
+import NetInfo from "@react-native-community/netinfo";
+import React, { useEffect, useState } from "react";
+import {
+  SafeAreaView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+type AppTab = "Parcels" | "Financials" | "Swap";
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+export default function HomeScreen(): React.JSX.Element {
+  const [currentTab, setCurrentTab] = useState<AppTab>("Parcels");
+  const [isConnected, setIsConnected] = useState<boolean>(true);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const status = state.isConnected ?? true;
+      setIsConnected(status);
+      if (status) {
+        SyncHelper.processQueue();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const renderActiveTab = (): React.JSX.Element => {
+    switch (currentTab) {
+      case "Parcels":
+        return <ParcelListScreen />;
+      case "Financials":
+        return <FinancialStatement />;
+      case "Swap":
+        return <ParcelSwapScreen />;
+      default:
+        return <ParcelListScreen />;
+    }
+  };
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <StatusBar barStyle="dark-content" />
+
+      {!isConnected && (
+        <View className="bg-rose-500 py-1.5 items-center">
+          <Text className="text-white text-[11px] font-bold">
+            Offline Mode - Updates are saved and queue sync is active.
+          </Text>
+        </View>
+      )}
+
+      <View className="flex-1">{renderActiveTab()}</View>
+
+      {/* Tab bar */}
+      <View className="bg-white border-t border-slate-100 py-2.5 flex-row justify-around items-center shadow-lg">
+        <TouchableOpacity
+          onPress={() => setCurrentTab("Parcels")}
+          className="items-center px-4 py-1"
+        >
+          <IconBox
+            color={currentTab === "Parcels" ? "#4F46E5" : "#94A3B8"}
+            size={22}
+          />
+          <Text
+            className={`text-[10px] font-bold mt-1.5 ${currentTab === "Parcels" ? "text-indigo-600" : "text-slate-400"}`}
+          >
+            Parcels
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setCurrentTab("Financials")}
+          className="items-center px-4 py-1"
+        >
+          <IconWallet
+            color={currentTab === "Financials" ? "#4F46E5" : "#94A3B8"}
+            size={22}
+          />
+          <Text
+            className={`text-[10px] font-bold mt-1.5 ${currentTab === "Financials" ? "text-indigo-600" : "text-slate-400"}`}
+          >
+            Financials
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setCurrentTab("Swap")}
+          className="items-center px-4 py-1"
+        >
+          <IconSwap
+            color={currentTab === "Swap" ? "#4F46E5" : "#94A3B8"}
+            size={22}
+          />
+          <Text
+            className={`text-[10px] font-bold mt-1.5 ${currentTab === "Swap" ? "text-indigo-600" : "text-slate-400"}`}
+          >
+            Swap
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
